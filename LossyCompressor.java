@@ -6,8 +6,8 @@ public class LossyCompressor extends JFrame {
     private int height;
     private int width;
     private int[][] red; //red[i][j] is the value of red channel of the pixel[i][j]
-    private int[][] green;
-    private int[][] blue;
+    private int[][] green; //green[i][j] is the value of green channel of the pixel[i][j]
+    private int[][] blue; //blue[i][j] is the value of blue channel of the pixel[i][j]
     private byte[] header;
 
     private int bytesToInt(byte[] bytes, int offset) {
@@ -20,7 +20,7 @@ public class LossyCompressor extends JFrame {
     public void readBMP(File file) throws IOException {
         FileInputStream fis = new FileInputStream(file);
         BufferedInputStream bis = new BufferedInputStream(fis);
-        boolean reversed;
+        boolean reversed; //whether the image is stored reversely -- bottom-up
         long emptyBytes; //the last bytes of a row may be meaningless
         header = new byte[54];
 
@@ -71,45 +71,21 @@ public class LossyCompressor extends JFrame {
     public void compress(File file) throws IOException {
         FileOutputStream fos = new FileOutputStream(file);
         BufferedOutputStream bos = new BufferedOutputStream(fos);
-        //int rgb16 = 0, currentRgb16;
         YCbCr ycbcr;
         int ycbcr16;
-        //int count = 0;
 
         bos.write(header);
 
         for(int i = 0; i < height; i++) {
             for(int j = 0; j < width; j++) {
-//                currentRgb16 = ((red[i][j] >> 3) << 11) | ((green[i][j] >> 2) << 5) | (blue[i][j] >> 3);
-//                if(count == 0) {
-//                    rgb16 = currentRgb16;
-//                    count++;
-//                } else if(currentRgb16 == rgb16) {
-//                    count++;
-//                    if(count == 255) {
-//                        bos.write(count);
-//                        bos.write((rgb16 >> 8) & 0xFF);
-//                        bos.write(rgb16 & 0xFF);
-//                        count = 0;
-//                    }
-//                } else {
-//                    bos.write(count);
-//                    bos.write((rgb16 >> 8) & 0xFF);
-//                    bos.write(rgb16 & 0xFF);
-//
-//                    rgb16 = currentRgb16;
-//                    count = 1;
-//                }
                 if(i % 2 == 0 && j % 2 == 0) {
-                    ycbcr = rgbToYCbCr(red[i][j], green[i][j], blue[i][j]);
+                    ycbcr = rgbToYCbCr(red[i][j], green[i][j], blue[i][j]); // convert the color space into yuv
+                    // select lower 6 bits of Y channel, lower 5 bits of cb channel and lower 5 bits of cr channel
+                    // combine these 16 bits, 2 bytes together and write into the compressed file
                     ycbcr16 = ((ycbcr.y >> 2) << 10) | ((ycbcr.cb >> 3) << 5) | (ycbcr.cr >> 3);
                     bos.write((ycbcr16 >> 8) & 0xFF);
                     bos.write(ycbcr16 & 0xFF);
                 }
-
-//                rgb16 = ((red[i][j] >> 3) << 11) | ((green[i][j] >> 2) << 5) | (blue[i][j] >> 3);
-//                bos.write((rgb16 >> 8) & 0xFF);
-//                bos.write(rgb16 & 0xFF);
             }
         }
 
@@ -119,11 +95,11 @@ public class LossyCompressor extends JFrame {
         bos.close();
     }
 
-    public void showBMP(String title) {
+    public void showBMP(String title, int x, int y) {
         this.setTitle(title);
         this.setSize(width, height);
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        this.setLocationRelativeTo(null);
+        this.setLocation(x, y);
 
         this.setResizable(true);
         this.setVisible(true);
@@ -166,6 +142,7 @@ public class LossyCompressor extends JFrame {
             FileSelector fs = new FileSelector();
             String path = fs.getPath();
             if(path != null && path.endsWith(".bmp")) {
+                //the name of compressed IM3 file
                 String compressedPath = path.substring(0, path.length() - 3) + "IM3";
 
                 File originalFile = new File(path);
@@ -173,7 +150,7 @@ public class LossyCompressor extends JFrame {
 
                 LossyCompressor lc = new LossyCompressor();
                 lc.readBMP(originalFile);
-                lc.showBMP("Original");
+                lc.showBMP("Original", 100, 300); //show the image of the original file
                 lc.compress(compressedFile);
 
                 long originalSize = originalFile.length();
@@ -183,6 +160,7 @@ public class LossyCompressor extends JFrame {
                 System.out.println("Compressed file size: " + compressedSize);
                 System.out.println("Compression ratio: " + originalSize * 1.0 / compressedSize);
 
+                //the name of decompressed file
                 String decompressedPath = path.substring(0, path.length() - 4) + "_decompressed.bmp";
                 File decompressedFile = new File(decompressedPath);
                 IMFileReader fileReader = new IMFileReader();
@@ -190,7 +168,7 @@ public class LossyCompressor extends JFrame {
                 fileReader.decompress(decompressedFile);
 
                 lc.readBMP(decompressedFile);
-                lc.showBMP("Compressed");
+                lc.showBMP("Compressed", 1000, 300); //show the image of compressed file
             } else if(path != null && path.endsWith(".IM3")) {
                 File compressedFile = new File(path);
                 LossyCompressor lc = new LossyCompressor();
@@ -202,7 +180,7 @@ public class LossyCompressor extends JFrame {
                 fileReader.decompress(decompressedFile);
 
                 lc.readBMP(decompressedFile);
-                lc.showBMP("Compressed");
+                lc.showBMP("Compressed", 100, 300);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -252,12 +230,13 @@ class IMFileReader {
         for(int i = 0; i < height; i++) {
             for(int j = 0; j < width; j++) {
                 if(i % 2 == 0 && j % 2 == 0) {
+                    // for each 2 by 2 block, only read the top left pixel. Other pixels are copied from the top left pixel
                     int high = bis.read();
                     int low = bis.read();
 
-                    y[i][j] = ((high >> 2) & 0x3F) << 2;
-                    cb[i][j] = (((high & 0x03) << 3) | ((low >> 5) & 0x07)) << 3;
-                    cr[i][j] = (low & 0x1F) << 3;
+                    y[i][j] = ((high >> 2) & 0x3F) << 2; //decode Y channel
+                    cb[i][j] = (((high & 0x03) << 3) | ((low >> 5) & 0x07)) << 3; //decode cb channel
+                    cr[i][j] = (low & 0x1F) << 3; //decode cr channel
                 } else if(i % 2 == 0 && j % 2 != 0) {
                     y[i][j] = y[i][j - 1];
                     cb[i][j] = cb[i][j - 1];
@@ -301,7 +280,7 @@ class IMFileReader {
         bos.write(header);
         byte[] skip = null;
         if(emptyBytes > 0) {
-            skip = new byte[emptyBytes];
+            skip = new byte[emptyBytes]; //the bytes that are meaningless and at the end of a row
         }
 
         if(reversed) {
@@ -314,7 +293,7 @@ class IMFileReader {
                 }
 
                 if(skip != null) {
-                    bos.write(skip);
+                    bos.write(skip); //skip the meaningless bytes at the end of a row
                 }
             }
         } else {
@@ -327,7 +306,7 @@ class IMFileReader {
                 }
 
                 if(skip != null) {
-                    bos.write(skip);
+                    bos.write(skip); //skip the meaningless bytes at the end of a row
                 }
             }
         }
