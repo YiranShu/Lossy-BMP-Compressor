@@ -1,0 +1,1 @@
+# Lossy-BMP-Compressor
